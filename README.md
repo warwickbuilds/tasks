@@ -66,7 +66,7 @@ Builds from pull requests are signed with a debug key and can't be installed ove
 - **Nothing leaves your phone.** No servers, no accounts, no analytics, crash reporting, ads or tracking SDKs.
 - **One network call, only when you ask.** **Settings → Check for updates** sends a single unauthenticated GET to `api.github.com` for this repo's latest release. It sends nothing about you or your tasks. A test fails the build if network code shows up anywhere else.
 - **No Google cloud backup.** Android's automatic backup and device-to-device transfer are switched off, so your tasks never end up in someone else's cloud. Use **Export** instead.
-- **Minimal permissions.** Only Internet, and only for that manual update check.
+- **Minimal permissions.** Internet, used only for that manual update check. The widget library also needs Android's standard "keep awake" and "run at startup" permissions so the widget keeps updating; they don't touch your data or the network.
 
 The full [Privacy policy](PRIVACY.md) is short, because there's nothing to collect.
 
@@ -155,7 +155,8 @@ Only one task can be pinned: pinning one unpins the rest, and finishing a task u
 - Stored on the phone: the Room database (`tasks.db`) and a small preferences file. Nothing else.
 - `android:allowBackup="false"` and `data_extraction_rules.xml` exclude everything from Google cloud backup and device transfer.
 - Exports are plain JSON written only to a file you pick with Android's file picker (Storage Access Framework). No storage permission.
-- Network: `INTERNET` permission, used only by `lib/UpdateChecker.kt` (a GET to `api.github.com/repos/warwickbuilds/tasks/releases/latest`, 10 s timeout). Download links are only offered if they're HTTPS on `github.com` under this repo's releases. `NetworkGuardTest` fails if network code appears in any other file, if the checker talks to any other host, or if the manifest asks for another permission. CI also checks the built APK's permissions.
+- Permissions: `INTERNET`, plus `WAKE_LOCK` and `RECEIVE_BOOT_COMPLETED` that Glance's WorkManager adds for widget updates. `ACCESS_NETWORK_STATE` and `FOREGROUND_SERVICE`, which WorkManager also adds, are removed in the manifest. CI fails if the built APK asks for anything else.
+- Network: `INTERNET` is used only by `lib/UpdateChecker.kt` (a GET to `api.github.com/repos/warwickbuilds/tasks/releases/latest`, 10 s timeout). Download links are only offered if they're HTTPS on `github.com` under this repo's releases. `NetworkGuardTest` fails if network code appears in any other file, if the checker talks to any other host, or if the manifest asks for another permission.
 - Links in descriptions open in your browser only when you tap them.
 - No `dependenciesInfo` blob in the APK.
 

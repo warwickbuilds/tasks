@@ -5,6 +5,12 @@
     <!-- Only used when you tap Settings → Check for updates (one GET to GitHub's releases API). -->
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- The widget library (Glance) runs on WorkManager, which adds WAKE_LOCK and
+         RECEIVE_BOOT_COMPLETED to keep widget updates working. Tasks never uses network
+         constraints or foreground work, so these two are taken back out. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" tools:node="remove" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" tools:node="remove" />
+
     <application
         android:name=".TasksApplication"
         android:allowBackup="false"

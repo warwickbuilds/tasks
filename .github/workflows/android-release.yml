@@ -81,7 +81,7 @@ jobs:
 
           AAPT2=$(ls "$ANDROID_HOME"/build-tools/*/aapt2 | sort -V | tail -1)
           "$AAPT2" dump permissions "$APK" | tee perms.txt
-          if grep 'uses-permission' perms.txt | grep -v -e 'android.permission.INTERNET' -e 'DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION'; then
+          if grep 'uses-permission' perms.txt | grep -v -e 'android.permission.INTERNET' -e 'android.permission.WAKE_LOCK' -e 'android.permission.RECEIVE_BOOT_COMPLETED' -e 'DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION'; then
             echo "::error::$APK asks for a permission it shouldn't."
             exit 1
           fi

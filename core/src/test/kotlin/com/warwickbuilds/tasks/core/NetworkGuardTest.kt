@@ -38,7 +38,11 @@ class NetworkGuardTest {
     @Test fun manifestHasNoExtraPermissions() {
         val manifest = File(System.getProperty("tasks.appSources") ?: "../app/src/main", "AndroidManifest.xml")
         if (!manifest.exists()) return
-        val perms = Regex("""uses-permission[^>]*android:name="([^"]+)"""").findAll(manifest.readText()).map { it.groupValues[1] }.toSet()
+        val perms = Regex("""<uses-permission[^>]*>""").findAll(manifest.readText())
+            .map { it.value }
+            .filter { "tools:node=\"remove\"" !in it }
+            .mapNotNull { Regex("""android:name="([^"]+)"""").find(it)?.groupValues?.get(1) }
+            .toSet()
         assertTrue("Unexpected permissions: $perms", perms.all { it == "android.permission.INTERNET" })
     }
 }
