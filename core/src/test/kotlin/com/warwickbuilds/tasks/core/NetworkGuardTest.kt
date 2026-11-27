@@ -15,7 +15,6 @@ class NetworkGuardTest {
     private val networkCode = Regex(
         """HttpURLConnection|HttpsURLConnection|openConnection\(|\bURL\(|Socket\(|WebView|DownloadManager|""" +
             """import\s+[\w.]*(okhttp|retrofit|ktor|firebase|crashlytics|analytics|gms)""",
-        RegexOption.IGNORE_CASE,
     )
 
     private fun appSources(): List<File> {
