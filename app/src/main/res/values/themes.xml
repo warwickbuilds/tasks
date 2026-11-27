@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="calm_background">#F4F6F2</color>
+    <color name="calm_background_dark">#111412</color>
+    <color name="icon_background">#2F6B5A</color>
+
+    <style name="Theme.Tasks" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/calm_background</item>
+    </style>
+</resources>

@@ -1,0 +1,136 @@
+# Builds a signed release APK and publishes it as a GitHub Release.
+#
+# - Pushing a tag like v0.1.0 builds the APK, signs it with the release key and
+#   publishes it. The tag must match appVersion in gradle.properties.
+#   Publishing a release with a new tag on GitHub's Releases page works too:
+#   the APK is added to that release when the build finishes.
+# - "Run workflow" on the Actions tab builds an APK without releasing it.
+#
+# Secrets (Settings → Secrets and variables → Actions), see README "Releases":
+#   ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD
+#   ANDROID_CERT_SHA256 (optional: the build fails if the APK isn't signed with this certificate)
+
+name: Android release
+
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      IS_RELEASE: ${{ startsWith(github.ref, 'refs/tags/v') }}
+      HAS_KEY: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Read the app version
+        id: version
+        run: |
+          VERSION=$(grep '^appVersion=' gradle.properties | cut -d= -f2)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "App version $VERSION"
+          if [ "$IS_RELEASE" = "true" ] && [ "${GITHUB_REF_NAME}" != "v$VERSION" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} doesn't match appVersion $VERSION in gradle.properties. Bump it first, or tag v$VERSION."
+            exit 1
+          fi
+
+      - name: Check the release key is set up
+        if: env.IS_RELEASE == 'true' && env.HAS_KEY != 'true'
+        run: |
+          echo "::error::The ANDROID_KEYSTORE_BASE64 secret is missing. See README → Releases → One-time setup."
+          exit 1
+
+      - name: Run checks
+        run: ./gradlew --no-daemon :core:test :app:testDebugUnitTest :app:lintDebug
+
+      - name: Restore the release key
+        if: env.HAS_KEY == 'true'
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > "$RUNNER_TEMP/release.jks"
+          echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+
+      - name: Build the release APK
+        run: ./gradlew --no-daemon :app:assembleRelease
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+
+      - name: Name the APK and verify signature and permissions
+        id: apk
+        env:
+          EXPECTED_SHA256: ${{ secrets.ANDROID_CERT_SHA256 }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          APK="tasks-$VERSION.apk"
+          cp app/build/outputs/apk/release/app-release.apk "$APK"
+
+          AAPT2=$(ls "$ANDROID_HOME"/build-tools/*/aapt2 | sort -V | tail -1)
+          "$AAPT2" dump permissions "$APK" | tee perms.txt
+          if grep 'uses-permission' perms.txt | grep -v -e 'android.permission.INTERNET' -e 'DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION'; then
+            echo "::error::$APK asks for a permission it shouldn't."
+            exit 1
+          fi
+
+          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          WANT=$(echo "$EXPECTED_SHA256" | tr -d ': ' | tr 'A-F' 'a-f')
+          "$APKSIGNER" verify --print-certs "$APK" | tee certs.txt
+          ACTUAL=$(grep -m1 'certificate SHA-256 digest' certs.txt | awk '{print $NF}')
+          if [ "$IS_RELEASE" = "true" ] && [ -n "$WANT" ] && [ "$ACTUAL" != "$WANT" ]; then
+            echo "::error::$APK is signed with $ACTUAL but ANDROID_CERT_SHA256 says $WANT. Phones would refuse this update."
+            exit 1
+          fi
+          echo "sha256=$ACTUAL" >> "$GITHUB_OUTPUT"
+          echo "apk=$APK" >> "$GITHUB_OUTPUT"
+          if [ "$HAS_KEY" != "true" ]; then
+            echo "::warning::No release key secrets, so this APK is signed with the debug key. It's for testing only and won't install over a released version."
+          fi
+
+      - name: Keep the APK as a build artifact
+        if: env.IS_RELEASE != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: tasks-${{ steps.version.outputs.version }}-apk
+          path: ${{ steps.apk.outputs.apk }}
+          retention-days: 7
+
+      - name: Publish the GitHub Release
+        if: env.IS_RELEASE == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APK: ${{ steps.apk.outputs.apk }}
+        run: |
+          cat > notes.md <<NOTES
+          Download **$APK** below and open it on your Android phone to install or update.
+
+          Tasks never checks the network in the background; tap **Settings → Check for updates** inside the app (or come back here) whenever you want to check for a newer release.
+          First time? See [Install](https://github.com/${{ github.repository }}#install).
+
+          Installing over an older version keeps your tasks. Uninstalling deletes them, so export a backup first.
+
+          Signing certificate SHA-256: \`${{ steps.apk.outputs.sha256 }}\`
+          NOTES
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "$APK" --clobber
+            gh release view "$GITHUB_REF_NAME" --json body --jq .body >> notes.md
+            gh release edit "$GITHUB_REF_NAME" --notes-file notes.md
+          else
+            gh release create "$GITHUB_REF_NAME" "$APK" \
+              --title "Tasks ${{ steps.version.outputs.version }}" \
+              --notes-file notes.md \
+              --generate-notes
+          fi
