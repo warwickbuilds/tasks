@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Tasks</string>
+    <string name="widget_name">Today</string>
+    <string name="widget_description">Your Today tasks. Tick them off right here.</string>
+</resources>
